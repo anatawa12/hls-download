@@ -135,7 +135,7 @@ async fn process_media_list(
             }
         }
         progress.set_position(i as u64);
-        progress.set_message(&format!("processing {}", i));
+        progress.set_message(format!("processing {}", i));
         async fn download(client: &reqwest::Client, url: &Url, segment: &MediaSegment) -> bytes::Bytes {
             client.get(url.join(&segment.uri).unwrap().as_str())
                 .send()
@@ -151,7 +151,7 @@ async fn process_media_list(
             Some(key) => {
                 let decoded;
                 loop {
-                    let cipher = AesCbc::new_var(key, iv_opt.as_ref().unwrap().as_slice()).unwrap();
+                    let cipher = AesCbc::new_from_slices(key, iv_opt.as_ref().unwrap().as_slice()).unwrap();
                     if let Ok(value) = cipher.decrypt_vec(&download(client, url, segment).await) {
                         decoded = value;
                         break;
@@ -176,6 +176,7 @@ async fn process_media_list(
             map: None,
             program_date_time: None,
             daterange: None,
+            unknown_tags: vec![]
         });
 
         let mut delay_until = last + Duration::from_secs(2);

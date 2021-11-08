@@ -7,15 +7,19 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-reqwest = { version = "0.10.8" }
-m3u8-rs = "1.0.6"
-aes = "0.6.0"
-block-modes = "0.7.0"
-hex = "0.4.2"
+m3u8-rs = "2.1.0"
+aes = "0.7.5"
+block-modes = "0.8.1"
+hex = "0.4.3"
 tempdir = "0.3.7"
 base64 = "0.13.0"
-indicatif = "0.15.0"
-bytes = "0.5"
+indicatif = "0.16.2"
+bytes = "1.1.0"
+
+[dependencies.reqwest]
+version = "0.11.6"
+default-features = false
+features = ["rustls-tls"]
 
 [dependencies.tokio]
 version = "0.2.5"
