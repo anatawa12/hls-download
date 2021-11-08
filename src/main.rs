@@ -4,7 +4,7 @@ use reqwest::Url;
 use block_modes::BlockMode;
 use std::fs::File;
 use std::io::{Write, BufWriter};
-use tokio::time::{Instant, Duration, delay_for};
+use tokio::time::{Instant, Duration, sleep};
 use std::process::{Command, Stdio};
 use indicatif::{ProgressBar, ProgressStyle};
 
@@ -20,7 +20,7 @@ async fn main() {
         let key_str: Vec<char> = args[2].chars().collect();
         // 22, 24
         match key_str.len() {
-            0 => None,
+            0 | 1 => None,
             16 => {
                 let mut key: [u8; 16] = [0; 16];
 
@@ -189,7 +189,7 @@ async fn process_media_list(
             }
         }
         if delay_until > now {
-            delay_for(delay_until - now).await;
+            sleep(delay_until - now).await;
         } else {
             progress.println("warn: process take 1 or more seconds");
         }
