@@ -1,0 +1,130 @@
+name: Publish
+
+on:
+  workflow_dispatch: {}
+
+env:
+  RELEASER_CHANGER: 'regex-pattern:version = "$1"@Cargo.toml'
+
+jobs:
+  pre-build:
+    name: Update version name
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.update.outputs.version }}
+    steps:
+      - uses: actions/checkout@v2
+      - uses: anatawa12/something-releaser@v2
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          profile: minimal
+          override: true
+
+      - name: update version name
+        id: update
+        run: |-
+          set-git-user anatawa12-bot
+          # update version name
+          VERSION="$(get-version)"
+          if ! [[ "$VERSION" = *-SNAPSHOT ]]; then
+            echo 'VERSION IS NOT SNAPSHOT' >&2
+            exit 1
+          fi
+          VERSION="$(version-unsnapshot "$VERSION")"
+          echo "::set-output name=version::$VERSION"
+          set-version "$VERSION"
+          cargo metadata --format-version=1 > /dev/null
+          generate-changelog -v "$VERSION" --date-for-unreleased
+          # commit & tag
+          git add .
+          git commit -m "v$VERSION"
+          git branch releasing
+          git push -u origin releasing
+      - name: Check Build crate
+        run: cargo package
+
+  build-rust:
+    name: Build rust
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: amd64
+            triple: x86_64-unknown-linux-gnu
+          - target: arm
+            triple: armv7-unknown-linux-gnueabihf
+          - target: arm64
+            triple: aarch64-unknown-linux-gnu
+          - target: ppc64le
+            triple: powerpc64le-unknown-linux-gnu
+          - target: s390x
+            triple: s390x-unknown-linux-gnu
+    needs: [pre-build]
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          ref: 'releasing'
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          profile: minimal
+          override: true
+          target: ${{ matrix.triple }}
+      - uses: Swatinem/rust-cache@v1
+        with:
+          target-dir: target
+
+      - name: Build
+        uses: actions-rs/cargo@v1
+        with:
+          use-cross: true
+          command: build
+          args: --target ${{ matrix.triple }} --release
+
+      - uses: actions/upload-artifact@v2
+        with:
+          name: built-${{ matrix.target }}
+          path: target/${{ matrix.triple }}/release/hls-download
+
+  publish:
+    name: Publish
+    environment: deployment
+    runs-on: ubuntu-latest
+    needs: [pre-build, build-rust]
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          ref: 'releasing'
+          fetch-epth: 2
+          token: "${{ secrets.ACTIONS_PAT }}"
+
+      # tools
+      - uses: anatawa12/something-releaser@v2
+
+      - uses: actions/download-artifact@v2
+        with:
+          path: outputs
+
+      - name: Push tag
+        env:
+          VERSION: ${{ needs.pre-build.outputs.version }}
+        run: |-
+          # set tag and publish current version
+          git tag "v$VERSION"
+          git push && git push --tags
+          # create master and push
+          git switch -c master
+          git fetch origin master --depth=1
+          git push -u origin master
+      - name: Update To Next Version
+        run: |
+          VERSION="$(get-version)"
+          VERSION="$(version-next "$VERSION")"
+          set-version "$(version-snapshot "$VERSION")"
+          cargo metadata --format-version=1 > /dev/null
+          git add .
+          git commit -m "prepare for next version: $VERSION"
+          git push
+          git push --delete origin releasing
