@@ -46,22 +46,32 @@ jobs:
 
   build-rust:
     name: Build rust
-    runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
         include:
-          - target: amd64
-            triple: x86_64-unknown-linux-gnu
-          - target: arm
-            triple: armv7-unknown-linux-gnueabihf
-          - target: arm64
-            triple: aarch64-unknown-linux-gnu
-          - target: ppc64le
-            triple: powerpc64le-unknown-linux-gnu
-          - target: s390x
-            triple: s390x-unknown-linux-gnu
+          - triple: x86_64-unknown-linux-musl
+            on: ubuntu-latest
+            cross: true
+          - triple: aarch64-unknown-linux-musl
+            on: ubuntu-latest
+            cross: true
+          - triple: x86_64-pc-windows-msvc
+            on: windows-latest
+            cross: false
+          - triple: aarch64-pc-windows-msvc
+            on: windows-latest
+            cross: false
+          - triple: x86_64-apple-darwin
+            on: macos-11
+            cross: false
+          - triple: aarch64-apple-darwin
+            on: macos-11
+            cross: false
+    runs-on: ${{ matrix.on }}
     needs: [pre-build]
+    env:
+      RUSTFLAGS: '-C target-feature=+crt-static'
     steps:
       - uses: actions/checkout@v2
         with:
@@ -85,7 +95,7 @@ jobs:
 
       - uses: actions/upload-artifact@v2
         with:
-          name: built-${{ matrix.target }}
+          name: built-${{ matrix.triple }}
           path: target/${{ matrix.triple }}/release/hls-download
 
   publish:
@@ -118,6 +128,35 @@ jobs:
           git switch -c master
           git fetch origin master --depth=1
           git push -u origin master
+
+      - name: Upload Artifacts
+        env:
+          VERSION: ${{ needs.pre-build.outputs.version }}
+        run: |-
+          archive() {
+            local target
+            local archive_file
+            target="$(echo "$1" | sed -E 's#^(.*)(built-)([^/]*)/([^.]*)(.*)#\3#')"
+            pushd "$(dirname "$1")" > /dev/null
+            if echo "$target" | grep windows >/dev/null; then
+              archive_file="${target}.zip"
+              zip -q "$2/$archive_file" "$(basename "$1")"
+            else
+              archive_file="${target}.tar.gz"
+              tar czf "$2/$archive_file" "$(basename "$1")"
+            fi
+            cd "$2"
+            sha256sum "$archive_file" > "$archive_file.sha256sum.txt"
+            popd > /dev/null
+          }
+          mkdir archives
+          ARCHIVES="$(realpath archives)"
+          find outputs -type f -name 'hls-download*' | while read -r FILE; do
+            archive "$FILE" "$ARCHIVES"
+          done
+          cd archives
+          gh release upload "v$VERSION" *
+
       - name: Update To Next Version
         run: |
           VERSION="$(get-version)"
