@@ -1,6 +1,6 @@
 [package]
 name = "hls-download"
-version = "0.1.0-SNAPSHOT"
+version = "0.1.0"
 authors = ["anatawa12 <anatawa12@icloud.com>"]
 edition = "2018"
 
